@@ -1016,6 +1016,7 @@ GPU提供了一组一位的谓词寄存器组，称之为predicate register，�
 |SETP.OR|进行或计算，然后设置predicate值|
 |R2P|将GPR值赋值predicate|
 |P2R|将predicate值赋值GPR|
+
 这些指令都是很容易理解的，和CPU的比较单元没什么本质的区别，关键是它的使用。对于每一条指令，我们可以用一个@Px的修饰符来指定，该指令只有在Px为真的情况下才会运行，@!Px则是为假才运行。所以对于如下的if-else语句：
 ```
 if(R0==R1){
