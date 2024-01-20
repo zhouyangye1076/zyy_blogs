@@ -446,6 +446,7 @@ i 后缀表示这是一条立即数运算指令，该类型的指令格式为`op
 只有`<`，RISCV 是直接支持的，其他的比较操作都需要转换为`<`才可以做。
 
 | 比较运算  | unsigned char/short/int/long/pointer |  signed char/short/int/long         | 转换关系  |
+|----------|--------------------------------------|-------------------------------------|-----------|
 | <        | sltu x3, x1, x2/sltui                |  slt x3, x1, x2/slti                | a<b       |
 | >=       | sltu x3, x1, x2; xori x3, x3, 1      |  slt x3, x1, x2; xori x3, x3, 1     | !(a<b)    |
 | ==       | sub x3, x1, x2; sltui x3, x3, 1      |  sub x3, x1, x2; sltui x3, x3, 1    | (a-b)<1   |
