@@ -367,7 +367,9 @@ Disassembly of section .text.ceil:
     *(.text.ceil)
 }
 ```
-特别注意，`. = exp`这些语句必须用`;`结尾，不然会语法错误。这次如何将所有待链接文件的各个段组装起来，确定符号地址的任务已经可以实现了。
+特别注意，`. = exp`这些语句必须用`;`结尾，不然会语法错误。至此如何将所有待链接文件的各个段组装起来，确定符号地址的任务已经可以实现了，我们用 SECTION 列表得到的内存布局可以如下图所示：
+
+![section布局](elf-img-3/section-dist-1.jpg)
 
 #### ENTRY 程序入口
 现在还有最后一个问题，程序需要执行的第一条指令的位置还没有确定，我们得到了内存布局，但是还没有 PC 寄存器的值。所以 ld 脚本提供了`ENTRY(main)`，ENTRY 后面填入的 label 就是 PC 开始执行的位置。比如我们希望从 main 标号开始执行，就填入 main 标号。
@@ -376,6 +378,10 @@ Disassembly of section .text.ceil:
 ```
     .global main
 ```
+
+所以我们可以得到完整的内存和 PC 的布局：
+
+![section+PC布局](elf-img-3/section-dist-2.jpg)
 
 #### 执行链接
 我们使用 riscv64-linux-gnu-ld（之后简称 ld）来执行链接操作，可以执行如下的指令：
