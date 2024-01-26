@@ -455,6 +455,12 @@ Symbol table '.symtab' contains 19 entries:
         Size              EntSize          Flags  Link  Info  Align
     [ 6] .strtab           STRTAB           0000000000000000  00001308
         0000000000000040  0000000000000000           0     0     1
+
+    Hex dump of section '.strtab':
+        0x00000000 00312e6f 00247800 6f746865 72006261 .1.o.$x.other.ba
+        0x00000010 73650069 00636f6e 64006c6f 6f700073 se.i.cond.loop.s
+        0x00000020 72630065 6c736500 656c7365 5f656e64 rc.else.else_end
+        0x00000030 00657869 74006465 7374006d 61696e00 .exit.dest.main.
 ```
 
 .symtab 是 symbol table，SYMTAB 类型，存储了所有的 symbol 的信息，section 信息如下。
@@ -483,6 +489,6 @@ Symbol table '.symtab' contains 19 entries:
 
 * st_size：symbol 关联的数据内存大小。这里都是标号，没有关联的内存大小，值是 0，所以看不出来；如果有动态连接的数据就可以看到 symbol 的是对应的数据内存的大小。
 
-* st_info：symbol 的类型和绑定类型。低四位是 type 信息，SECTION 表示是段符号，FILE 表示是文件名，NOTYPE 表示是普通 label，FUNC 表示是要动态链接的函数，OBJECT 表示是要动态链接的变量。高四位是 bind 信息，用于符号连接用的，LOCAL 表示是本文件内部可见的局部符号，GLOBAL 表示是所有文件可见的全局符号。链接的时候会根据符号的类型和绑定类型采用不同的连接方法，比如 NOTYPE 的 GLOBAL 符号是跨文件静态链接，NOTYPE 的 LOCAL 就是文件内部静态链接，OBJECT 的 GLOBAL 是动态链接，FUNC 的 GLOBAL 是动态链接。
+* st_info：symbol 的类型和绑定类型。低四位是 type 信息，SECTION 表示是段符号，FILE 表示是文件名，NOTYPE 表示是普通 label，FUNC 表示是要动态链接的函数，OBJECT 表示是要动态链接的变量。高四位是 bind 信息，用于符号连接用的，LOCAL 表示是本文件内部可见的局部符号，GLOBAL 表示是所有文件可见的全局符号。链接的时候会根据符号的类型和绑定类型采用不同的连接方法，比如 NOTYPE 的 GLOBAL 符号是跨文件静态链接，NOTYPE 的 LOCAL 就是文件内部静态链接，OBJECT 的 GLOBAL 是动态链接，FUNC 的 GLOBAL 是动态链接。不过动态链接依赖其他的数据结构和段结构。
 
 * st_other：symbol 的其他信息。
