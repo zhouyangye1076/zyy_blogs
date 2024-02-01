@@ -492,3 +492,4 @@ Symbol table '.symtab' contains 19 entries:
 * st_info：symbol 的类型和绑定类型。低四位是 type 信息，SECTION 表示是段符号，FILE 表示是文件名，NOTYPE 表示是普通 label，FUNC 表示是要动态链接的函数，OBJECT 表示是要动态链接的变量。高四位是 bind 信息，用于符号连接用的，LOCAL 表示是本文件内部可见的局部符号，GLOBAL 表示是所有文件可见的全局符号。链接的时候会根据符号的类型和绑定类型采用不同的连接方法，比如 NOTYPE 的 GLOBAL 符号是跨文件静态链接，NOTYPE 的 LOCAL 就是文件内部静态链接，OBJECT 的 GLOBAL 是动态链接，FUNC 的 GLOBAL 是动态链接。不过动态链接依赖其他的数据结构和段结构。
 
 * st_other：symbol 的其他信息。
+
