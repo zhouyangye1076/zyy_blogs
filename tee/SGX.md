@@ -37,7 +37,7 @@ enclave 有自己的代码段、数据段、堆栈段。此外还有 ssa frame�
 
 因为 ssa frame 中 ssa 的个数需要事先确定，所以 thread 的个数也要事先确定，所以 TCS 的个数也要事先确定。
 
-## SGX 指令级
+## SGX 指令集
 
 在后文描述中，我们会提到诸如 ecreate、eadd、eentry 的等各种 SGX 指令，但实际上 Intel 只提供了两条 SGX 指令，分别是 ENCLS 和 ENCLU，前者是 supervisor 可用的 encalve 指令，后者是 user 可用的 enclave 指令。之后 enclave 指令依靠 EAX 寄存器的值来进一步确定要执行的功能，如 ecreate、eadd 等，这些被成为指令的叶子功能（leaf function）。我们可以列一张简单的表格：
 | ENCLS | EAX | funct                 | ENCLU | EAX | funct       |
@@ -47,7 +47,11 @@ enclave 有自己的代码段、数据段、堆栈段。此外还有 ssa frame�
 |einit  |02H  |提交 enclave 初始化     |eexit  |04H  |退出 enclave |
 |eextend|06H  |对 enclave 页面做度量   |       |     |              |
 
-Intel 的 eclave 指令调用在某种程度上类似于 int 指令的调用。首先 EAX 寄存器的值为对应的调用号，决定需要调用的 enclave 功能；ebx、ecx 等寄存器载入需要传入的参数或者结构体。然后执行 enclave 指令进行执行对应调用号的函数操作。可以看到 ENCLS 指令主要负责 enclave 的创建、毁灭等管理 enclave 的操作，需要比较高的安全性、精密性和权限要求，所以必须在 RING0 中使用；而 ENCLU 仅执行进入推出 enclave 等 enclave 调用操作，只需要比较低的优先级，可以在 user 太直接执行。就权限而言，enclave 根本上不是特权操作，而是安全操作，它需要的不是更强的资源管理能力和抽象级别，而是更强的隔离能力，所以他的权限是独立于 normal 的 enclave，和 U/S/M 等正交。
+Intel 的 eclave 指令调用在某种程度上类似于 int 指令的调用。首先 EAX 寄存器的值为对应的调用号，决定需要调用的 enclave 功能；ebx、ecx 等寄存器载入需要传入的参数或者结构体。然后执行 enclave 指令进行执行对应调用号的函数操作。
+
+可以看到 ENCLS 指令主要负责 enclave 的创建、毁灭等管理 enclave 的操作，需要比较高的安全性、精密性和权限要求，所以必须在 RING0 中使用；而 ENCLU 仅执行进入推出 enclave 等 enclave 调用操作，只需要比较低的优先级，可以在 user 太直接执行。
+
+就权限而言，enclave 根本上不是特权操作，而是安全操作，它需要的不是更强的资源管理能力和抽象级别，而是更强的隔离能力，所以他的权限是独立于 normal 的 enclave，和 U/S/M 等正交。
 
 ## enclave 创建
 
@@ -332,7 +336,100 @@ AEX 返回的时候将 EAX 设置为 3，将 ACX 设置为 AEP 就是为了方�
     * 切换特权级
     * CSSA--
 
-## enclave 驱逐、密封、载入
+## enclave 替换
+
+对比 swap memory。memory 的大小是有限的，当 memory 中的内存不够的时候，OS 会将部分 memory 的内容转移到磁盘的 swap memory 暂存起来，然后将替换出来的内存拿来作为 memory 使用。从而使得 OS 实际可以调度的内存范围大于 memory 的内存范围。同理，当 EPC 需要使用更多的 EPC 的时候，可以将部分 EP 页面的内容转移到普通 memory 中，然后使用空出来的 EP，从而使得 SGX 能够使用比 PRM 更多的 EP 空间。
+
+替换一个 EP 页面分为三步：
+* 首先选择一个合适的页面进行替换，将这个页面进行锁定，防止其他的进程继续调用它
+* 然后将这个页面进行加密保存到普通内存中，当然还需要额外的数据结构 VA 管理被替换的页的版本号
+* 将替换出去的页解密，然后替换回来
+
+### 锁定 enclave 页面
+
+首先用系统软件选择可以被替换出去的 EP 页面。然后用 eblock 指令将这个 EP 页面的的状态设置为 blocked，防止其他的进程在调用这个页面。当一个页面被设置为 blocked，这个页面的 地址转换信息将不再被更新到 TLB 中。在替换一个页之前，我们需要确认这个页所在的 enclave 没有被执行，这是需要使用 etrack 指令对 enclave 的执行情况进行跟踪。
+
+#### eblock 指令
+eblock 指令的参数格式如下：
+* 大类：ENCLS
+* eax：编号 09H
+* ecx：要设置为 block 的 EP 页面的地址
+
+eblock 的执行过程如下：
+* 将合法的 EP 页面在 EPCM entry 中的 blocked 设置为 1，之后这个页面就不能被其他各类 enclave 指令使用了
+* 如果 block 操作失败，eax 会返回错误的编号：
+    * SGX_BLK_STATE：当前也已经被 blocked 了
+    * SGX_ENTEREPOCH_LOCKED：etrack 正在跟踪当前 SECS，当前的 enclave 正在被执行，我们不应该替换一个正在被执行的 enclave
+    * SGX_NOTBLOCKABLE：当前页的类型不是 REG、TCS、TRIM 不可以被 blocked
+    * SGX_BLK_IVD：当前页是 invalid 的无效页
+    * SGX_LOCKFAIL：EPCM 正在被修改，说明有 encreate、eadd 等初始化操作正在被执行
+
+这类可以看到一个可以 block 的 EP，必然是没有被执行的、有效的、没有被访问的 REG、TCS、TRIM 页
+
+#### etrack 指令
+etrack 指令的参数格式如下：
+* 大类：ENCLS
+* eax：编号 0CH
+* ecx：要跟踪的 SECS 的 EP 页面地址
+
+etrack 的执行过程如下：
+* 检查 SECS 页面的 TRACKING 域，当 SECS 正在被执行时，这个 field 被设置。如果 SECS 正在被执行，则 etrack 返回错误，反之则返回 0
+* 当且仅当所有的逻辑处理器执行 enclave 代码完毕，并且将所有的 enclave 相关的 TLB 清空，才认为 SECS 执行完毕
+
+### 替换 enclave 页面
+
+我们首先介绍几个 enclave 替换操作相关的数据结构。
+
+#### VA array 结构
+当一个 EP 被替换出内存之前，它的版本信息需要被保存在 VA array 当中，VA 是一个数组，每个表项用于记录一个 EP 的信息，每个 slot 的大小是 8 byte，用于记录当前 EP 的版本号，所以一个 VA 页可以保存 512 个 EP 页的信息。当一个 EP 被移除之前，会在 VA 中找到一个空闲的 slot，然后保存自己的版本号。如果 VA 已经满了，那么就会分配一个新的 VA。VA 本身也可以被替换出去，这个时候这个 VA 的版本号也会被记录到另一个 VA 的 slot 当中。
+
+为什么需要记录版本号呢？因为一个 EP 被加密保存到了 memory。这个时候 SGX 的加解密器可能会热更新，导致版本发生变化，这可能会导致加密 EP 的密钥发生变化，甚至加密的算法发生变化，因此原来的 EP 将无法被解密。为了管理这一变化，SGX 提供了版本号，如果 SGX 更新导致版本号发生变化，则旧的版本号的 EP 将无法被继续使用。
+
+#### PCMD(PAGING CRYPTO META DATA)
+PCMD 是 PAGEINFO 的一部分，PAGEINFO 的 SECINFO 部分是一个 union，既可以是 SECINFO，也可以是 PCMD。当执行页面替换操作的时候，因为 EP 直接拷贝到 normal memory 是不安全的，所以在拷贝之前，需要先对 EP 做一个加密。加密之后的各类信息会被保存在这个 PCMD 结构中返回。这个数据结构会被替换操作的 EWB 指令使用。PCMD 的数据结构如下：
+* SECINFO：PCMD 的第一个 field 就是 SECINFO，所以预期是说 SECINFO 和 PCMD 是 union，不如说 ecreate 和 eadd 只是用了 PCMD 中的 SECINFO，而忽略了其他的数据结构
+* ENCLAVEID：EP 页所关联的 enclave 的 id，和 SECS 的 eid 保持一致
+* MAC：加密之后的签名结果，为了确保页面数据的完整性，页面数据、页面数据的元数据等信息会被签名保存起来，防止被篡改
+
+现在我们正式介绍如何用 EWB 指令替换页面。
+
+#### EWB 指令
+ewb 指令的参数格式如下：
+* 大类：ENCLS
+* eax：编号 0BH
+* ebx：PAGEINFO 数据结构的地址，SRCPG 是 EP 加密后被转移到的 normal memory 的地址，加密后的一些重要信息会通过 PAGEINFO 结构中的 PMCD 返回
+* ecx：要被加密替换出去的 EP 的地址
+* edx：被选择保存版本信息的 VA 表项的地址
+
+ewb 指令的执行流程：
+* 通过 EPCM 得到被替换的 EP 对应的 SECS，获得对应的 eid
+* 填充用于加密的元数据数据结构，包括 EP 在 enclave 中的线性地址、EP 的 EPCM entry 信息（也包括 eid）
+* 这个 128 位的元数据和 4K 的 EP 页面数据用 CR_BASE_PK 密钥进行 AES 加密，得到加密后的 EP 页面和 MAC 签名
+* 加密后的页数据被保存到 PAGEINFO.SRCPG 指示的 normal 内存中
+* PAGEINFO 返回加密的信息，其中 PMCD 的 SECINFO 载入 EP entry 信息、MAC 载入签名信息、ENCLAVEID 载入 eid 信息
+* EP 的 entry 被标记为 invalid
+* 将当前密封权威的版本号保存到 VA slot 当中
+
+EWB 将 EP 页加密并保存到了 normal memory，并且构造了包含 EP 源信息的 PCMD 结构（如 EPCM 信息、MAC 信息）。这个 PCMD 结构和 VA slot 表项相关的信息需要系统软件手动保存到 normal memory 中管理起来。等后续需要将页面重新载入的时候可以再根据 PCMD、VA slot、EP 保存地址等信息将它重新加载回 EPC。
+
+### 重新载入 enclave 页面
+
+等需要将 enclave 页面重新载入 EPC 的时候（比如 enclave 缺页异常的时候），系统软件或者异常处理程序根据 AEX 退出时的 SSA 信息定位到需要的加密 EP 的地址、PCMD 的地址、VA 的地址。然后调用 ELDU、ELDB 将数据重新载入 EP 页面，并初始化 EPCM entry。
+
+#### ELDU/ELDB 指令
+eldu/eldb 指令的参数格式如下：
+* 大类：ENCLS
+* eax：ELDB 编号 07H、ELDU 编号 08H
+* ebx：PAGEINFO 数据结构的地址，SRCPG 是加密后的 EP 在 normal memory 的地址，PMCD 是保存的元信息，SECS 保存对应的 SECS 的地址
+* ecx：被载入数据的 EP 页面的地址
+* edx：被选择保存版本信息的 VA 表项的地址
+
+eldu/eldb 的执行流程如下：
+* 将加密的页面数据、线性地址、PMCD 的各类元数据用 CR_BASE_PK 密钥作 AES 操作，可以计算得到解密后的页面数据和签名 MAC
+* 将页面数据拷贝到 ecx 指示的 EPC 中
+* 将计算得到的 MAC 和 PMCD 的 MAC 进行比较，如果相同则验证通过，数据有效
+* 更新 EPCM 中的 entry 表项
+* 如果是 ELDU，entry 的 blocked 设置为 0；如果是 ELDB 则设置为 1
 
 ## enclave 验证
 
