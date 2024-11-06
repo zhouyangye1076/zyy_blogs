@@ -352,7 +352,7 @@ eexit 执行如下的操作：
 
 ### enclave 异步退出后的返回
 
-当 enclave 发生 AEX 之后，他会进入 AEP 指定的外部地址进行异常的处理，处理完毕后可以执行 ERESUME 指令返回 enclave 继续执行。这一步类似于普通中断进入 kernel 之后，kernel 执行异常处理程序，然后执行 IRET 返回原来的程序执行流。
+当 enclave 发生 AEX 之后，他会进入 AEP 指定的外部地址。这个外部地址是一个跳板程序，之后它会进入 kernel 的 trap handler 对 enclave 的异常做进一步处理处理，处理完毕后返回跳板程序，最后 ERESUME 指令返回 enclave 继续执行。这一步类似于普通中断进入 kernel 之后，kernel 执行异常处理程序，然后执行 IRET 返回原来的程序执行流，只不过 enclave 的控制流要经 user 转移到 kernel，而不是直接转移到 kernel。
 
 #### ERESUME 指令
 eresume 指令的参数格式如下：
@@ -584,6 +584,9 @@ SGX 的远程认证在 TPM 的远程认证 DDA 协议的基础上进行扩展实
 ![SGX 远程认证](img/sgx_dda.jpg)
 
 ## 参考文献
+[Intel@Software Guard Extension PPT](https://community.intel.com/legacyfs/online/drupal_files/332680-002.pdf)
+[Intel@Software Guard Extension Program Reference](https://www.intel.com/content/dam/develop/external/us/en/documents/329298-002-629101.pdf)
+[Innovative technology for CPU Based Attestation and Sealing](https://www.intel.com/content/dam/develop/external/us/en/documents/hasp-2013-innovative-technology-for-attestation-and-sealing-413939.pdf)
 [Innovative Instructions and Software Model for Isolated Execution](https://www.intel.com/content/dam/develop/external/us/en/documents/hasp-2013-innovative-instructions-and-software-model-for-isolated-execution.pdf)
 [Intel SGX Tutorial and Demo](https://github.com/GrahamAde/Intel_SGX_Tutorial_and_Demo)
 [SGX-用于独立执行的创新指令集和软件模型（翻译）](https://blog.csdn.net/guojinglong/article/details/88735120)
