@@ -14,7 +14,7 @@ SGX 体系结构提供了一组专用的 PRMRR 寄存器（类似于 riscv 的 p
 
 #### MEE 机制
 
-此外 SGX 对内存进行扩展，使内存成为可以自动化加密的内存。内存中集成了内存加密引擎 MEE(memory encrypt engine)，MEE 会对特殊用户写入特殊区域的内存进行加密，防止其他用户恶意窃取这部分数据。MEE 可以管理加密的内存区域被称为 MEE 区域，PRM 内存会被一个或者多个 MEE 加密保护起来。所以处理器在 enclave 状态写入内存的 enclave 数据会先被加密成密文，再存入内存；读取 enclave 数据时会先将数据解密，再写入 cache、tlb 和寄存器。当 normal 程序即使访问 enclave 内存，得到的也是加密后的数据，没有办法得到直接可用的数据。
+此外 SGX 对内存进行扩展，使内存成为可以自动化加密的内存。内存中集成了内存加密引擎 MEE(memory encrypt engine)，MEE 会对特殊用户写入特殊区域的内存进行加密，防止其他用户恶意窃取这部分数据。MEE 可以管理加密的内存区域被称为 MEE 区域，PRM 内存会被一个或者多个 MEE 加密保护起来。所以处理器在 enclave 状态写入内存的 enclave 数据会先被加密成密文，再存入内存；读取 enclave 数据时会先将数据解密，再写入 cache、tlb 和寄存器。使用该机制可以防止恶意平台对内存进行冷启动攻击和内存嗅探攻击。
 
 ### enclave 的管理
 
@@ -582,6 +582,8 @@ SGX 的远程认证在 TPM 的远程认证 DDA 协议的基础上进行扩展实
 * 如果满足要求，就可以继续开始后的远程调用了。
 
 ![SGX 远程认证](img/sgx_dda.jpg)
+
+## 侧信道防御
 
 ## 参考文献
 [Intel@Software Guard Extension PPT](https://community.intel.com/legacyfs/online/drupal_files/332680-002.pdf)
