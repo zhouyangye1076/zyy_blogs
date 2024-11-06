@@ -426,7 +426,7 @@ etrack 的执行过程如下：
 #### VA array 结构
 当一个 EP 被替换出内存之前，它的版本信息需要被保存在 VA array 当中，VA 是一个数组，每个表项用于记录一个 EP 的信息，每个 slot 的大小是 8 byte，用于记录当前 EP 的版本号，所以一个 VA 页可以保存 512 个 EP 页的信息。当一个 EP 被移除之前，会在 VA 中找到一个空闲的 slot，然后保存自己的版本号。如果 VA 已经满了，那么用 EPA 指令分配一个新的 VA。VA 本身也可以被替换出去，这个时候这个 VA 的版本号也会被记录到另一个 VA 的 slot 当中。
 
-为什么需要记录版本号呢？因为一个 EP 被加密保存到了 memory。这个时候 SGX 的加解密器可能会热更新，导致版本发生变化，这可能会导致加密 EP 的密钥发生变化，甚至加密的算法发生变化，因此原来的 EP 将无法被解密。为了管理这一变化，SGX 提供了版本号，如果 SGX 更新导致版本号发生变化，则旧的版本号的 EP 将无法被继续使用。
+为什么需要记录版本号呢？因为一个 EP 被加密保存到了 memory。这个时候 SGX 的加解密器可能会热更新（比如微码更新），导致版本发生变化，这可能会导致加密 EP 的密钥发生变化，甚至加密的算法发生变化，因此原来的 EP 将无法被解密。为了管理这一变化，SGX 提供了版本号，如果 SGX 更新导致版本号发生变化，则旧的版本号的 EP 将无法被继续使用。
 
 #### PCMD(PAGING CRYPTO META DATA)
 PCMD 是 PAGEINFO 的一部分，PAGEINFO 的 SECINFO 部分是一个 union，既可以是 SECINFO，也可以是 PCMD。当执行页面替换操作的时候，因为 EP 直接拷贝到 normal memory 是不安全的，所以在拷贝之前，需要先对 EP 做一个加密。加密之后的各类信息会被保存在这个 PCMD 结构中返回。这个数据结构会被替换操作的 EWB 指令使用。PCMD 的数据结构如下：
@@ -489,8 +489,101 @@ eldu/eldb 的执行流程如下：
 
 ## enclave 验证
 
+一些复杂的功能需要多个 enclave 协同工作才可以实现，但是对于每个 enclave 其他的 enclave 是不可信的，因此需要验证机制让每个 enclave 知道对方 enclave 的可信性。对方 enclave 如果是在本地执行的话，enclave 之间可以用简单的本地验证策略进行验证；但是如果 enclave 在远端，则需要用比较复杂的远端验证的方式建立信任。
+
+### 本地验证
+
+enclave 在验证的时候，enclave A 可以用 ereport 指令构建自己的 report 报告发送给 enclave B，这个报告同时会用密钥签名；然后 enclave B 可以用 egetkey 得到和 enclave A 调用 report 时候一样的密钥，检验 report 的完整性和真实性，然后检查 report 的值确定 enclave A 的信息。因此我们首先对 ereport 和 egetkey 等概念进行介绍。
+
+#### REPORT 数据结构
+report 是 enclave 调用 ereport 指令得到的数据结构，他部分重要的 field 如下：
+* CPUSVN：cpu 处理器的安全版本号
+* MISCSELECT：enclave 的 miscselect属性
+* ATTRIBUTE：enclave 的 attribute 属性
+* MRENCLAVE：enclave 的 enclave 度量值
+* MRSIGNER：enclave 的密封值
+* ISVPRODID：enclave 对应的产品号
+* ISVSVN：enclave 的安全版本号
+* REPORTDATA：report 使用的 enclave 提供的特殊数据
+* KEYID：ereport 构建 mac 签名时使用的 report 密钥的序号
+* MAC：用 KEYID 对应的密钥对 report 做的签名
+
+这些数据信息基本来自 enclave 的 SECS。其中 CPUSVN 等 field 用于报告平台信息，其余的汇报 enclave 信息，如果 CPUSVN 和 ISVSVN 等信息不满足要求，则说明平台和 enclave 不满足安全要求，enclave 是不会验证通过。
+
+#### TARGETINFO 数据结构
+在建立 report 的时候除了需要 enclave 自己的信息，也需要发起 report 请求的 enclave 的信息，这两部分信息回忆起被做成摘要，以表明当前的 report 是 enclave A 向 enclave B 发起的。部分重要的 field 如下：
+* MISCSELECT：enclave 的 miscselect属性
+* MRENCLAVE：enclave 的 enclave 度量值
+
+#### ereport 指令
+ereport 指令的参数格式如下：
+* 大类：ENCLU
+* eax：编号 00H
+* ebx：TARGETINFO 数据结构地址，来自 target enclave 的信息
+* ecx：readdata 地址，本地提供的额外 report 数据
+* edx：生成的 REPORT 数据结构的地址
+
+指令执行流程如下：
+* 检查 TARGETINFO、READDATA、REPORT 地址都在 EPC 内部，并且结构合法
+* 根据 SECS 的信息填充 REPORT 的各个 field，CPUSVN 来自 CR_CPU_SVN，KEYID 来自 CE_REPORT_KEY_ID
+* 根据 TARGETINFO 中的信息和 KEYID 构建 KEYDEPENDENCE，然后用 SGX 的 TCB 硬件根据 KEYDEPENDENCE 构建一个 report 密钥，因此这个密钥是 enclave A 和 enclave B 之间加密通信独有的。可以用 TPM 来构造这个密钥。
+* 得到密钥之后对 REPORT 的数据的哈希值进行签名，保存到 MAC 中，得到最终的完整 REPORT
+
+#### KEYREQUEST 数据结构
+egetkey 指令请求密钥时候所使用的数据结构，记录了请求密钥的 enclave 信息和密钥信息，部分重要的 field 如下：
+* KEYNAME：记录了 key 的类型，可以请求的 key 密钥一共分为 5 种
+    * SEAL_KEY：用于 enclave 的密封
+    * REPORT_KEY：用于 enclave 的验证
+    * INITTOKEN_KEY：用于 enclave 的 inittoken 生成
+    * PROVISION_KEY、PROVISION_SEAL_KEY：检查 enclave 的 provision 权能
+* KEYPOLICY：
+* ISVSVN：记录 isv 安全版本号
+* CPUSVN：记录 cpu 的安全版本号
+* ATTRIBUTEMASK：记录 enclave 的属性掩码
+* KEYID：来自 report 记录的 CR_REPORT_KEY_ID
+* MISCMASK：enclave 的 miscselect 属性
+
+#### egetkey 指令
+ereport 指令的参数格式如下：
+* 大类：ENCLU
+* eax：编号 04H
+* ebx：KEYREQUEST 数据结构地址
+* ecx：存储导出密钥的 buffer 的地址
+
+执行流程：
+* 根据 KEYREQUEST.KEYNAME 填充对应的 KEYDEPENDENCE 数据结构，数据来自 KEYREQUEST、SECS 和其他寄存器
+* 利用 KEYDEPENDENCE 到处对应的密钥 key，然后将 128 位的 AES 密钥保存到 buffer 中
+
+这个操作存在一个危险性，就是密钥离开了处理器微架构进入了内存，那么就存在因为 enclave bug 而被泄露的风险。但是好在这个密钥仅仅在 enclave A 验证 enclave B 期间会被 enclave A 自己使用并导出到内存，它对于其他的 enclave 没有意义。最多这个密钥泄露之后，其他的恶意程序可以用这个密钥伪造其他的 enclave 的 report，导致 enclave A 被攻击。所以 enclave A 有义务保管好自己密钥不被泄露。
+
+现在我们介绍本地验证中 enclave A 验证 enclave B 可靠性的具体流程：
+* 首先 enclave A 和 enclave B 之间建立一条不可信的传输通道
+* enclave A 将自己的 TARGETINFO 发送给 enclave B
+* enclave B 根据 TARGETINFO 和自己的信息，调用 ereport 指令生成自己的 REPORT 数据结构
+* enclave B 将 report 发送给 enclave A
+* enclave A 利用 report 的信息和自己的信息构造 KEYREQUEST
+* enclave A 调用 egetkey 指令和 KEYREQUEST 得到需要的密钥
+* 使用密钥对 REPORT 的签名 MAC 进行检验，如果签名正确，则说明 REPORT 有效，enclave B 的身份得到验证
+（不过则么应对重放攻击呢？）
+* 之后 enclave B 向 enclave A 发送自己的 TARGETINFO，enclave B 对 enclave 进行验证
+
+### 远程验证
+
+SGX 的远程认证在 TPM 的远程认证 DDA 协议的基础上进行扩展实现 EPID（enhanced privacy ID）协议。为了让 enclave A 和远端的设备之间可以建立可信的连接，SGX 的系统软件提供了一个称为 Quoting Enclave 的可信 enclave。该 enclave 首先会生成一组 RSA 密钥，然后用和 DDA 协议一样的 Join 协议，让可信第三方为密钥颁发证书，从而得到第三方对于 Quoting Enclave 的确认。这个密钥就是 EPID Key。
+
+之后的执行流程如下：
+* Challenger 将一个随机数发送给 Application，同时发送认证请求，这个随机数是 DDA 协议的一部分
+* Application 启动 Quoting Enclave 和 Application Encalve 之间的本地认证过程。Quoting Enclave 对 Application Enclave 认证通过，并且得到他的 REPORT。
+* Quoting Enclave 对 REPORT 认证通过后，用 EPID Key 将这个 REPORT、REPORT 的签名、EPID Key 的证书发送给 Challenger。因为第三方可信、EPID Key 可信、REPORT 可信，所以 Challenger 可以通过分析 REPORT 的信息确认 Application Enclave 的平台是否满足要求。
+* 如果满足要求，就可以继续开始后的远程调用了。
+
+![SGX 远程认证](img/sgx_dda.jpg)
+
+## enclave 密封
+
 ## 参考文献
 [Innovative Instructions and Software Model for Isolated Execution](https://www.intel.com/content/dam/develop/external/us/en/documents/hasp-2013-innovative-instructions-and-software-model-for-isolated-execution.pdf)
+[Intel SGX Tutorial and Demo](https://github.com/GrahamAde/Intel_SGX_Tutorial_and_Demo)
 [SGX-用于独立执行的创新指令集和软件模型（翻译）](https://blog.csdn.net/guojinglong/article/details/88735120)
 [Intel SGX（3）——处理器](https://www.cnblogs.com/caidi/p/15469489.html)
 [SGX基本原理](https://lingering.github.io/2020/06/18/SGX-%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86/)
