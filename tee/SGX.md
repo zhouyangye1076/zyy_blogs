@@ -585,6 +585,18 @@ SGX 的远程认证在 TPM 的远程认证 DDA 协议的基础上进行扩展实
 
 ## 侧信道防御
 
+很可惜的是，SGX 本身并不能进行测信道的防御，我们可以用如下的方式进行侧信道攻击：
+
+* 首先我们提供一段进行秘密数据访问和泄露进入侧信道的代码
+* 训练 BTB 的表项指向这段侧信道代码
+* 将 RSB 排空，让处理器没有 RSB 可以使用
+* 进入 enclave 之后，等待 enclave 执行 return 操作
+* 这个时候因为 RSB 为空，enclave 就会使用 BTB 进行返回地址预测，导致错误的进入预先设置的代码区域
+* 于是秘密数据被访问和写入 cache
+* 利用超线程技术，然后一个 thread 和 enclave 在同一个物理处理器同时执行
+* 利用这个 thread 的 cache 信息对 enclave 的数据进行泄露
+* egetkey 的 key 因为是明文存储在 buffer 中的，无疑是被泄露的合适对象，之后就可以用来伪造数据了
+
 ## 参考文献
 [Intel@Software Guard Extension PPT](https://community.intel.com/legacyfs/online/drupal_files/332680-002.pdf)
 [Intel@Software Guard Extension Program Reference](https://www.intel.com/content/dam/develop/external/us/en/documents/329298-002-629101.pdf)
