@@ -2,15 +2,50 @@
 
 SGX（Software Guard eXtensions）是 Intel 提出的一种软件保护扩展技术。SGX 利用特殊的指令集和硬件构造和维护安全区域 enclave（飞地），并在 enclave 执行程序、处理安全任务。enclave 利用硬件特性实现 enclave 间的隔离、enclave 和普通程序之间的隔离，以此确保 enclave 内部代码和数据的安全性。
 
-## PRM
+## SGX 模型
+
+### PRM
 
 利用特权级的隔离归根到底只能实现权限和物理内存逻辑上的隔离，只要绕开了必要的逻辑检查就可以绕开这些隔离机制。对于代码，可以通过控制流的劫持的方式获得代码控制权限；对于数据，可以通过一些 OOB 等方法读写不应该被访问的内存；对于页表等元数据，可以先通过漏洞修改元数据权限，然后再对代码和数据进行窃取。enclave 在硬件上缓解了这些问题。
 
+#### PRMRR 寄存器
+
 SGX 体系结构提供了一组专用的 PRMRR 寄存器（类似于 riscv 的 pmpaddr）。当 SGX 体系结构启动时，固件代码会对 PRMRR 进行设置，从而预留一段内存作为 PRM（processor reserved memory）作为 SGX 专用内存。这部分内存被 PRMRR 保护，当处理器在 normal 模式下执行时，PRMRR 会检查内存访问地址，然后禁止处理器对 PRM 进行内存访问，只有当处理器在 enclave 模式下执行 enclave 时才可以访问这部分 PRM。这杜绝了 normal 程序对 enclave 代码、数据的直接修改和访问。
 
-此外 SGX 对内存进行扩展，使内存成为可以自动化加密的内存。处理器在 enclave 状态写入内存的 enclave 数据会先被加密成密文，再存入内存；读取 enclave 数据时会先将数据解密，再写入 cache、tlb 和寄存器。因此，当 normal 程序即使访问 enclave 内存，得到的也是加密后的数据，没有办法得到直接可用的数据。
+#### MEE 机制
 
-最后，enclave 和管理 enclave 的元数据仅使用 PRM 实现，且 enclave 的元数据的管理仅通过 SGX 指令实现，直接杜绝了特权软件漏洞对元数据的破坏。
+此外 SGX 对内存进行扩展，使内存成为可以自动化加密的内存。内存中集成了内存加密引擎 MEE(memory encrypt engine)，MEE 会对特殊用户写入特殊区域的内存进行加密，防止其他用户恶意窃取这部分数据。MEE 可以管理加密的内存区域被称为 MEE 区域，PRM 内存会被一个或者多个 MEE 加密保护起来。所以处理器在 enclave 状态写入内存的 enclave 数据会先被加密成密文，再存入内存；读取 enclave 数据时会先将数据解密，再写入 cache、tlb 和寄存器。当 normal 程序即使访问 enclave 内存，得到的也是加密后的数据，没有办法得到直接可用的数据。
+
+### enclave 的管理
+
+我们的内存被 PRMRR 切分为了 normal 区域和 EPC 区域。normal 区域的内存是按照正常操作系统的管理逻辑被管理；EPC 区域的内存只能在 normal 状态下被处理器直接读写，但是 SGX 指令集架构提供了两个接口：
+* 首先，SGX 指令集架构提供了一组 ECLS 指令，当处理器位于 RING0 特权级的时候，可以用 ECLS 指令对 EPC 页面的也进行管理，比如创造 enclave、分配 EP 页、移除 EP 页、载入 EP 页等。从这个角度上来看，我们的 EPC 类似于一个密封的数据结构，内部的数据是各类页和页的数据结构，调用接口是一组 SGX 指令。这样可以确保用户对 EPC 的操作被硬件直接管理和封装起来，最大限度地防止用户用软件漏洞破坏或者泄露 EPC 内部数据结构的细节值。
+* 其次，虽然 normal 处理器无法知道 EPC 内部各个字段的确切的值，比如数据段的值等，也没有办法对 EP 直接做读写，但是它对于 EPC 内部每个页的使用情况是了如指掌的，因为每个页是它用 SGX 指令构建起来的，所以它知道每个页的分配情况、数据类型，各个元数据的基本值。因此当他要选择页面做调换、选择页面新建结构的时候，他可以精确找到需要的 EP、VA slot 等信息。
+
+前者限制了系统软件管理 EPC 的能力，防止过多的能力造成恶意的操作；后者为系统软件提供了足够的 EPC 知识，保障了系统软件管理 EPC 的能力。
+
+### enclave 页表
+
+处理器平台是知道 EPC 内存的范围和 EPCM 地址的，这个是软硬件协同的一部分。处理器按照下面的逻辑进行内存访问：
+
+* 根据分段机制将逻辑地址转化为线性地址，或者说虚拟地址
+* 检查当前处理器模式和访问范围，如果是 enclave 模式并且访问的是程序中的 enclave 地址空间（虚拟地址空间的逻辑定义，实际上是不是真的 enclave 地址空间请求不做保证），则 enclave_access 设置为 1，是 enclave 访问请求，反之是普通请求。
+* 走页表得到对应的物理地址
+* 如果是 enclave access
+    * 检查物理地址范围是不是 EPC 内部
+        * 是的话，检查 EPCM 权限，访问 EP
+        * 不是的话，触发异常
+* 如果不是 enclave access
+    * 检查物理地址范围是不是 EPC 内部
+        * 是的话，将地址替换另一个不存在的物理地址进行访问
+        * 不是的话，访问内存
+
+![enclave 页表翻译](img/sgx_walk_pgtlb.jpg)
+
+从这里可以得到如下几个结论：
+* 页表中的 enclave 虚拟地址空间有且只能映射真实的 EPC 页面，反之亦然，这确保程序在逻辑层面是正确的，即有且仅有认为被保护的真实被保护
+* normal 程序只能访问 normal 内存
+* enclave 程序既可以访问 normal 内存，也可以访问 enclave 内存
 
 ## enclave 程序结构简介
 
@@ -46,6 +81,12 @@ enclave 有自己的代码段、数据段、堆栈段。此外还有 ssa frame�
 |eadd   |01H  |为 enclave 增加一个页面 |eresume|03H  |中断退出的返回 |
 |einit  |02H  |提交 enclave 初始化     |eexit  |04H  |退出 enclave |
 |eextend|06H  |对 enclave 页面做度量   |       |     |              |
+|eldb   |07H  |载入被替换的 EP 页      |       |     |              |
+|eldu   |08H  |载入被替换的 EP 页      |       |     |              |
+|eblock |09H  |将 EP 也设置为 blcoked  |       |     |              |
+|epa    |0AH  |新建一个 VA 页          |       |     |              |
+|ewb    |0BH  |将一个 EP 加密替换出 EPC |       |     |              |
+|etrace |0CH  |跟踪 SECS 的执行状态    |       |     |              |
 
 Intel 的 eclave 指令调用在某种程度上类似于 int 指令的调用。首先 EAX 寄存器的值为对应的调用号，决定需要调用的 enclave 功能；ebx、ecx 等寄存器载入需要传入的参数或者结构体。然后执行 enclave 指令进行执行对应调用号的函数操作。
 
@@ -263,6 +304,8 @@ eenter 执行如下的操作：
     * 将处理器工作模式设置为 ENCLAVE 模式，将 CR_ENCLAVE_MODE 设置为 1
     * 清空流水线和 TLB 中的表项
 
+从这里可以看到 thread 的 ESP 和 EBP 并没有被修改，所以 enclave 使用的 stack 依然是 normal thread 自己的堆栈，他可以继续调用自己原有的 normal 数据。
+
 ### enclave 的同步退出
 
 当 enclave 执行完毕后，执行 eexit 指令退出 enclave
@@ -342,7 +385,7 @@ AEX 返回的时候将 EAX 设置为 3，将 ACX 设置为 AEP 就是为了方�
 
 替换一个 EP 页面分为三步：
 * 首先选择一个合适的页面进行替换，将这个页面进行锁定，防止其他的进程继续调用它
-* 然后将这个页面进行加密保存到普通内存中，当然还需要额外的数据结构 VA 管理被替换的页的版本号
+* 然后将这个页面和页面的元数据进行加密保存到普通内存中，当然还需要额外的数据结构 VA 管理被替换的页的版本号
 * 将替换出去的页解密，然后替换回来
 
 ### 锁定 enclave 页面
@@ -381,7 +424,7 @@ etrack 的执行过程如下：
 我们首先介绍几个 enclave 替换操作相关的数据结构。
 
 #### VA array 结构
-当一个 EP 被替换出内存之前，它的版本信息需要被保存在 VA array 当中，VA 是一个数组，每个表项用于记录一个 EP 的信息，每个 slot 的大小是 8 byte，用于记录当前 EP 的版本号，所以一个 VA 页可以保存 512 个 EP 页的信息。当一个 EP 被移除之前，会在 VA 中找到一个空闲的 slot，然后保存自己的版本号。如果 VA 已经满了，那么就会分配一个新的 VA。VA 本身也可以被替换出去，这个时候这个 VA 的版本号也会被记录到另一个 VA 的 slot 当中。
+当一个 EP 被替换出内存之前，它的版本信息需要被保存在 VA array 当中，VA 是一个数组，每个表项用于记录一个 EP 的信息，每个 slot 的大小是 8 byte，用于记录当前 EP 的版本号，所以一个 VA 页可以保存 512 个 EP 页的信息。当一个 EP 被移除之前，会在 VA 中找到一个空闲的 slot，然后保存自己的版本号。如果 VA 已经满了，那么用 EPA 指令分配一个新的 VA。VA 本身也可以被替换出去，这个时候这个 VA 的版本号也会被记录到另一个 VA 的 slot 当中。
 
 为什么需要记录版本号呢？因为一个 EP 被加密保存到了 memory。这个时候 SGX 的加解密器可能会热更新，导致版本发生变化，这可能会导致加密 EP 的密钥发生变化，甚至加密的算法发生变化，因此原来的 EP 将无法被解密。为了管理这一变化，SGX 提供了版本号，如果 SGX 更新导致版本号发生变化，则旧的版本号的 EP 将无法被继续使用。
 
@@ -412,6 +455,19 @@ ewb 指令的执行流程：
 
 EWB 将 EP 页加密并保存到了 normal memory，并且构造了包含 EP 源信息的 PCMD 结构（如 EPCM 信息、MAC 信息）。这个 PCMD 结构和 VA slot 表项相关的信息需要系统软件手动保存到 normal memory 中管理起来。等后续需要将页面重新载入的时候可以再根据 PCMD、VA slot、EP 保存地址等信息将它重新加载回 EPC。
 
+#### EPA 指令
+顺便介绍一下用于扩展 VA 页面的 EPA 指令。
+
+epa 指令的参数格式如下：
+* 大类：ENCLS
+* eax：编号 0AH
+* ebx：PT_VA 的枚举值，用于填充 EPCM 的 PT
+* ecx：被选中的 EP 页的地址
+
+执行流程如下：
+* 检查 EP 也是否已经被占用
+* 将 EP 页内容清空，设置对应的 EPCM，类型为 VA
+
 ### 重新载入 enclave 页面
 
 等需要将 enclave 页面重新载入 EPC 的时候（比如 enclave 缺页异常的时候），系统软件或者异常处理程序根据 AEX 退出时的 SSA 信息定位到需要的加密 EP 的地址、PCMD 的地址、VA 的地址。然后调用 ELDU、ELDB 将数据重新载入 EP 页面，并初始化 EPCM entry。
@@ -434,6 +490,8 @@ eldu/eldb 的执行流程如下：
 ## enclave 验证
 
 ## 参考文献
+[Innovative Instructions and Software Model for Isolated Execution](https://www.intel.com/content/dam/develop/external/us/en/documents/hasp-2013-innovative-instructions-and-software-model-for-isolated-execution.pdf)
+[SGX-用于独立执行的创新指令集和软件模型（翻译）](https://blog.csdn.net/guojinglong/article/details/88735120)
 [Intel SGX（3）——处理器](https://www.cnblogs.com/caidi/p/15469489.html)
 [SGX基本原理](https://lingering.github.io/2020/06/18/SGX-%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86/)
 [Intel SGX初步学习理解笔记](https://blog.csdn.net/weixin_42492218/article/details/121318550#:~:text=SGX%EF%BC%88Software%20Guard%20eXtensions%EF%BC%89%E8%BD%AF%E4%BB%B6%E4%BF%9D%E6%8A%A4%E6%89%A9%E5%B1%95%EF%BC%9A%20%E6%98%AF%E4%B8%80%E7%BB%84CPU%E6%8C%87%E4%BB%A4%E6%89%A9%E5%B1%95%EF%BC%8C%E8%83%BD%E5%A4%9F%E5%88%9B%E9%80%A0%E5%87%BA%E4%B8%80%E4%B8%AA%20%E5%8F%AF%E4%BF%A1%E6%89%A7%E8%A1%8C%E7%8E%AF%E5%A2%83,%E6%9D%A5%E4%BF%9D%E6%8A%A4%E4%BB%A3%E7%A0%81%E5%92%8C%E6%95%B0%E6%8D%AE%EF%BC%8C%E5%8D%B3%E4%BD%BF%E4%BD%BF%E7%94%A8root%20%E6%9D%83%E9%99%90%E4%B9%9F%E6%97%A0%E6%B3%95%E8%AE%BF%E9%97%AE%E3%80%82%20%E9%80%9A%E8%BF%87%E8%BF%99%E4%B8%AA%E7%A1%AC%E4%BB%B6%E8%AE%BE%E6%96%BD%EF%BC%8C%E5%BA%94%E7%94%A8%E7%A8%8B%E5%BA%8F%E5%8F%AF%E4%BB%A5%E9%9A%94%E7%A6%BB%E4%BB%A3%E7%A0%81%E5%92%8C%E6%95%B0%E6%8D%AE%E6%9D%A5%E8%BE%BE%E5%88%B0%E5%AE%89%E5%85%A8%EF%BC%8C%E5%A4%A7%E5%A4%9A%E5%BA%94%E7%94%A8%E4%BA%8E%20%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F%20%E4%B8%AD%E3%80%82)
