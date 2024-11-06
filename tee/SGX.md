@@ -75,18 +75,18 @@ enclave 有自己的代码段、数据段、堆栈段。此外还有 ssa frame�
 ## SGX 指令集
 
 在后文描述中，我们会提到诸如 ecreate、eadd、eentry 的等各种 SGX 指令，但实际上 Intel 只提供了两条 SGX 指令，分别是 ENCLS 和 ENCLU，前者是 supervisor 可用的 encalve 指令，后者是 user 可用的 enclave 指令。之后 enclave 指令依靠 EAX 寄存器的值来进一步确定要执行的功能，如 ecreate、eadd 等，这些被成为指令的叶子功能（leaf function）。我们可以列一张简单的表格：
-| ENCLS | EAX | funct                 | ENCLU | EAX | funct       |
-|-------|-----|-----------------------|-------|-----|-------------|
-|ecreate|00H  |为 enclave 创建 SECS    |eenter |02H  |进入 enclave |
-|eadd   |01H  |为 enclave 增加一个页面 |eresume|03H  |中断退出的返回 |
-|einit  |02H  |提交 enclave 初始化     |eexit  |04H  |退出 enclave |
-|eextend|06H  |对 enclave 页面做度量   |       |     |              |
-|eldb   |07H  |载入被替换的 EP 页      |       |     |              |
-|eldu   |08H  |载入被替换的 EP 页      |       |     |              |
-|eblock |09H  |将 EP 也设置为 blcoked  |       |     |              |
-|epa    |0AH  |新建一个 VA 页          |       |     |              |
-|ewb    |0BH  |将一个 EP 加密替换出 EPC |       |     |              |
-|etrace |0CH  |跟踪 SECS 的执行状态    |       |     |              |
+| ENCLS | EAX | funct                 | ENCLU | EAX | funct                 |
+|-------|-----|-----------------------|-------|-----|-----------------------|
+|ecreate|00H  |为 enclave 创建 SECS   |ereport|00H  |生成 enclave 的验证报告  |
+|eadd   |01H  |为 enclave 增加一个页面 |eenter |02H  |进入 enclave            |
+|einit  |02H  |提交 enclave 初始化     |eresume|03H  |中断退出的返回           |
+|eextend|06H  |对 enclave 页面做度量   |eexit  |04H  |退出 enclave            |
+|eldb   |07H  |载入被替换的 EP 页      |egetkey |05H  |得到加密的密钥          |
+|eldu   |08H  |载入被替换的 EP 页      |       |     |                       |
+|eblock |09H  |将 EP 也设置为 blcoked  |       |     |                       |
+|epa    |0AH  |新建一个 VA 页          |       |     |                       |
+|ewb    |0BH  |将一个 EP 加密替换出 EPC |       |     |                       |
+|etrace |0CH  |跟踪 SECS 的执行状态    |       |     |                       |
 
 Intel 的 eclave 指令调用在某种程度上类似于 int 指令的调用。首先 EAX 寄存器的值为对应的调用号，决定需要调用的 enclave 功能；ebx、ecx 等寄存器载入需要传入的参数或者结构体。然后执行 enclave 指令进行执行对应调用号的函数操作。
 
@@ -546,7 +546,7 @@ egetkey 指令请求密钥时候所使用的数据结构，记录了请求密钥
 #### egetkey 指令
 ereport 指令的参数格式如下：
 * 大类：ENCLU
-* eax：编号 04H
+* eax：编号 05H
 * ebx：KEYREQUEST 数据结构地址
 * ecx：存储导出密钥的 buffer 的地址
 
@@ -555,6 +555,10 @@ ereport 指令的参数格式如下：
 * 利用 KEYDEPENDENCE 到处对应的密钥 key，然后将 128 位的 AES 密钥保存到 buffer 中
 
 这个操作存在一个危险性，就是密钥离开了处理器微架构进入了内存，那么就存在因为 enclave bug 而被泄露的风险。但是好在这个密钥仅仅在 enclave A 验证 enclave B 期间会被 enclave A 自己使用并导出到内存，它对于其他的 enclave 没有意义。最多这个密钥泄露之后，其他的恶意程序可以用这个密钥伪造其他的 enclave 的 report，导致 enclave A 被攻击。所以 enclave A 有义务保管好自己密钥不被泄露。
+
+另外我们可以看到，一个 SECS 的密钥和他的 SECS 属性紧密相关，任何度量、版本之间的变化都会导致密钥的变化。
+
+egetkey 会用到一个特殊的参数 OwnerEpoch。这个参数是平台所有者的表征，当平台的所有者发生转换的时候，这个 OwnerEpoch 就会发生转换，导致原来所有的密钥都失效，原来的加密全部都失效。
 
 现在我们介绍本地验证中 enclave A 验证 enclave B 可靠性的具体流程：
 * 首先 enclave A 和 enclave B 之间建立一条不可信的传输通道
@@ -578,8 +582,6 @@ SGX 的远程认证在 TPM 的远程认证 DDA 协议的基础上进行扩展实
 * 如果满足要求，就可以继续开始后的远程调用了。
 
 ![SGX 远程认证](img/sgx_dda.jpg)
-
-## enclave 密封
 
 ## 参考文献
 [Innovative Instructions and Software Model for Isolated Execution](https://www.intel.com/content/dam/develop/external/us/en/documents/hasp-2013-innovative-instructions-and-software-model-for-isolated-execution.pdf)
