@@ -37,6 +37,16 @@ sudo apt -y install wechat
 
 和 windows 的钉钉界面排布差不多。
 
+### 安装腾讯会议
+
+* 登陆[腾讯会议下载官网](https://meeting.tencent.com/download/)
+* 选择 linux->x86_64 下载`TencentMeeting_0300000000_3.19.2.400_x86_64_default.publish.officialwebsite.deb`
+* 执行`sudo dpkg -i TencentMeeting_0300000000_3.19.2.400_x86_64_default.publish.officialwebsite.deb`安装腾讯会议
+* 直接执行可能会遇到报错“不兼容桌面的 wayland 协议”，这个时候需要对桌面的配置作修改
+* 执行`sudo vim /etc/gdm3/custom.conf`，修改 gdm 桌面配置
+* 将`#WaylandEnable=false`的注释去掉，关闭 Wayland 功能
+* 执行`sudo service gdm3 restart`，重启桌面，然后就可以正常使用腾讯会议了
+
 ## 安装 clash 梯子
 
 * 进入[魔戒梯子官网](https://mojie.app/)，选择 “下载客户端” 中的 ubuntu，然后下载 Clash.Verge__amd64.deb
@@ -104,7 +114,7 @@ sudo apt -y install wechat
 * Verilog:
     * Verilog-HDL/SystemVerilog/Bluespec SystemVerilog
 
-## 配置 ssh 连接
+## 配置远程连接
 
 ### 生成 ssh 密钥
 
@@ -136,6 +146,21 @@ sudo apt -y install wechat
 * Remote-SSH
 
 之后就可以用 vscode ssh 连接、编辑、执行远程设备的文件了 
+
+### 配置 nebula
+
+* 从[github官网](https://github.com/slackhq/nebula/releases)下载最新对应的 nebula 发行版，解压得到 nebula、nebula-cra 可执行程序
+* 拷贝对应 config 文件
+* 执行`sudo nebula -config ./config/config.yml`就可以直接访问 nebula 网络了 
+
+### 安装 vnc viewer
+
+* 从[vnc viewer 官网](https://www.realvnc.com/en/connect/download/viewer/?lai_vid=WKjlmvxMbCB4R&lai_sr=5-9&lai_sl=l)选择 linux->deb x86，然后下在得到`VNC-Viewer-7.13.1-Linux-x64.deb`
+* 执行`sudo dpkg -i VNC-Viewer-7.13.1-Linux-x64.deb`安装 vnc viewer
+* 在需要 vnc 连接的设备上执行`vncserver -list`观察有没有已经存在的 vnc 连接，如果有的话，比如 x,就可以连接 590x 端口进行 vnc 连接；如果没有就执行`vncserver`建立一个新的 vnc 连接
+* 打开 vnc viewer，然后进行连接即可，输入对应的 ip 地址和 vnc 连接的端口
+
+
 
 
 
