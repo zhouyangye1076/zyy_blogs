@@ -8,7 +8,7 @@
 * gcc
 * g++
 
-## 安装通讯软件
+## 安装办公软件
 
 ### 安装微信
 
@@ -47,6 +47,12 @@ sudo apt -y install wechat
 * 执行`sudo vim /etc/gdm3/custom.conf`，修改 gdm 桌面配置
 * 将`#WaylandEnable=false`的注释去掉，关闭 Wayland 功能
 * 执行`sudo service gdm3 restart`，重启桌面，然后就可以正常使用腾讯会议了
+
+### 安装 WPS
+
+* 可以用 ubuntu 的应用商店一键安装，但是安装的结果似乎不能用
+* 登陆[WPS 官网](https://www.wps.cn/product/wpslinux#)
+* 下载 x86 的 deb，然后`sudo dpkg -i wps-office_12.1.0.17900_amd64.deb`安装即可
 
 ## 安装 clash 梯子
 
