@@ -120,6 +120,9 @@ sudo apt -y install wechat
     * C/C++ themes
 * Verilog:
     * Verilog-HDL/SystemVerilog/Bluespec SystemVerilog
+    * Chisel Syntax
+    * Firrtl
+    * Scala Syntax
 
 ## 配置远程连接
 
@@ -167,6 +170,48 @@ sudo apt -y install wechat
 * 在需要 vnc 连接的设备上执行`vncserver -list`观察有没有已经存在的 vnc 连接，如果有的话，比如 x,就可以连接 590x 端口进行 vnc 连接；如果没有就执行`vncserver`建立一个新的 vnc 连接
 * 打开 vnc viewer，然后进行连接即可，输入对应的 ip 地址和 vnc 连接的端口
 
+## 安装 vivado
+
+### 安装下载 vivado 2024.4
+
+* 进入 Xilinx 的[官网](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vivado-design-tools/2024-2.html)进行安装程序的下载，这里我们选择`Linux Self Extracting Web Installer`进行下载。该安装包是 linux 专用的，对 vivado 进行联网下载，安装时间比较久，要求网络通畅，但是安装程序比较小（330M） 
+![vivado 安装程序下载](img/vivado_load.png)
+* 执行安装程序`sh FPGAs_AdaptiveSoCs_Unified_2024.2_1113_1001_Lin64.bin`，如果没有权限就`chmod +x`一下。
+* 进入 vivado 的图形安装界面，进行安装
+
+    * 输入自己的 xilinx 帐号密码，然后开始下载
+    ![](img/vivado_install_0.png)
+    * 选择 vivado
+    ![](img/vivado_install_1.png)
+    * 选择 vivado 的版本，其实两个版本都可以
+    ![](img/vivado_install_2.png)
+    * 选择对应的安装配置
+    ![](img/vivado_install_3.png)
+    * 对 license 全部选择同意
+    ![](img/vivado_install_4.png)
+    * 设置安装路径，可以看到需要 270 G
+    ![](img/vivado_install_5.png)
+    * 开始安装，根据网速，大概下载+安装要 7-8 小时
+* `vim ~/.bashrc`修改 bash 启动设置，加入`source /path/to/vivado/Vivado/2024.2/settings64.sh`，这样 bash 每次启动的时候会自动执行 vivado 的配置 shell，将 vivado 的路径加入到 PATH 环境变量中
+* 执行 vivado 就可以启动 vivado
+
+### 进行环境管理
+
+为了让 vivado 可以顺利执行，需要对环境做一些简单的调整
+
+* vivado 可能会报错需要`en_US.UTF-8`的 locale，所以我们需要我们的 locale 支持对应的环境语言，执行下面的代码加入 `en_US.UTF-8`的环境语言。后续执行`locale -a`可以看到新加入的`en_US.UTF-8`
+```
+sudo locale-gen “en_US.UTF-8”
+sudo update-locale LANG=en_US.UTF-8
+```
+* 安装必要的依赖包 libncurses5-dev, libtinfo-dev
+* 默认安装的是 libtinfo.so.6，vivado 需要的是 libtinfo.so.5，可以做一个软链接
+```
+sudo apt-get install libncurses5-dev
+sudo apt-get install libcanberra-gtk-module
+sudo apt install libtinfo-dev
+sudo ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5
+```
 
 
 
