@@ -71,15 +71,15 @@ plt.savefig('img/coverage2.png')
 
 # plt.savefig('img/coverage-edge-random.png')
 
-for i in range(600):
-    ax.plot(random()*16, random()*8, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
+# for i in range(600):
+#     ax.plot(random()*16, random()*8, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
 
-for i in range(20, 80):
-    ax.plot(i/10, 2, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
-    ax.plot(i/10, 6, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
+# for i in range(20, 80):
+#     ax.plot(i/10, 2, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
+#     ax.plot(i/10, 6, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
 
-for j in range(20, 60):
-    ax.plot(2, j/10, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
-    ax.plot(8, j/10, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
+# for j in range(20, 60):
+#     ax.plot(2, j/10, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
+#     ax.plot(8, j/10, 'ro', markersize=5)  # 使用网格中心坐标(3.5,4.5)
 
-plt.savefig('img/coverage-together.png')
+# plt.savefig('img/coverage-together.png')
