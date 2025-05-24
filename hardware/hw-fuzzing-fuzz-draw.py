@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from random import random
+from random import random, choice
 
 def fuzz(map_array, dot_list, max_time):
     def mutate_small(point):
@@ -15,9 +15,28 @@ def fuzz(map_array, dot_list, max_time):
             point[1] = 7.9
         return point
     
+    def mutate_large(point):
+        purple_kind = set((i, j) for i in range(16) for j in range(8))
+        green_kind = set([(i, j) for i in range(2, 6) for j in range(2, 6)])
+        orangle_kind = set([(i, j) for i in range(8, 12) for j in range(1, 5)])
+        gray_kind = set([(i, j) for i in range(12, 16) for j in range(3, 7)])
+        purple_kind = purple_kind - gray_kind - green_kind - orangle_kind
+        match int(random()*4):
+            case 0:
+                point = choice(list(purple_kind))
+            case 1:
+                point = choice(list(green_kind))
+            case 2:
+                point = choice(list(orangle_kind))
+            case _:
+                point = choice(list(gray_kind))
+        point = (point[0] + random(), point[1] + random())
+        return point
+    
     last_color = 'blue'
     mutate_time = 0
-    point = [random()*16, random()*8]
+    point = [0, 0]
+    point = mutate_large(point)
     while len(dot_list) < max_time:
         # print(point)
         color = map_array[int(point[1])][int(point[0])]
@@ -26,7 +45,7 @@ def fuzz(map_array, dot_list, max_time):
                 point = mutate_small(point)
                 mutate_time += 1
             else:
-                point = [random()*16, random()*8]
+                point = mutate_large(point)
                 mutate_time = 0
         else:
             point = mutate_small(point)
@@ -82,9 +101,9 @@ set_color(map_array, 8, 1, 4, 4, 'orange')
 set_color(map_array, 12, 3, 4, 4, 'gray')
 
 dot_list = fuzz(map_array, [], 100)
-draw_coverage(map_array, dot_list, 'img/coverage-basic_fuzz.png')
+# draw_coverage(map_array, dot_list, 'img/coverage-kind_fuzz.png')
 dot_list = fuzz(map_array, dot_list, 1000)
-draw_coverage(map_array, dot_list, 'img/coverage-basic_fuzz-1.png')
+# draw_coverage(map_array, dot_list, 'img/coverage-kind_fuzz-1.png')
 dot_list = fuzz(map_array, dot_list, 10000)
-draw_coverage(map_array, dot_list, 'img/coverage-basic_fuzz-2.png')
+draw_coverage(map_array, dot_list, 'img/coverage-kind_fuzz-2.png')
 
