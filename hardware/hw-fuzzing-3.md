@@ -230,3 +230,56 @@ DifuzzRTL 对于页表和异常处理方式的选择也成为后续处理器模�
 * loop
 
 ![DifuzzRTL 工作流程](img/difuzzrtl-work-flow.png)
+
+## ProcessorFuzz
+
+ProcessorFuzz 发表在 HOST 2023 上，是对标 DifuzzRTL 做的改进工作。该工作在控制寄存器覆盖率指标的基础上设计了 CSR 寄存器覆盖率指标，并以此为基础设计了自洽的突变、结果检测、程序过滤技术，降低了执行时间和开销。但 ProcessorFuzz 总体来说并没有解决新的问题，也没有提供突破性的贡献。
+
+![ProcessorFuzz 抬头](img/processorfuzz-title.png)
+
+### CSR 寄存器覆盖率
+
+DifuzzRTL 用控制寄存器值的摘要作为覆盖率指标，任何一个控制寄存器值的变化都会产生新的覆盖率，然后诱导突变。该策略认为所有的控制寄存器都是一样的重要的，乘法单元里的 FSM 寄存器的重要性和 CSR 中的 satp 寄存器的重要性是等价的，于是 DifuzzRTL 容易陷入对比较平庸的控制寄存器（如计算单元的 FSM 寄存器）引发的状态探索上，而放弃了对重要控制寄存器（如控制部件的寄存器）的状态探索。
+
+ProcessorFuzz 指出，不同的控制寄存器重要性和地位是不一样的，诸如 satp、mstatus、mie 等寄存器可以直接影响整个处理器的工作状态，而诸如乘法单元、浮点单元内部的状态寄存器则只能影响局部电路的工作状态，显然前者的改变带来的状态改变更大，突变探索的价值更大。我们在上一篇文章中提到，覆盖率指标是对信息量的定量描述，覆盖率指标分布和信息量分布越吻合，起到的引导效果越好，同样是控制寄存器，前者就应该比后者分配到更大的权重，而不是简单的平均。
+
+在所有的控制寄存器中，CSR 中起控制作用的架构层寄存器无疑是影响最广泛、应该分配的权重最高的，因此 ProcessorFuzz 干脆使用这部分 CSR 的状态变化作为覆盖率指标，而抛弃了其他次要的控制寄存器，相当于给 CSR 寄存器较高的权重，而给其他寄存器 0 权重。ProcessorFuzz 相当于在有限的测试时间内将探索收益最大化；而 DifuzzRTL 虽然在理论上有更大的未来收益，但实际上，因为测试时间有限，它即不能得到太高的既得收益，又没有时间给他在未来翻盘。
+
+在判断控制寄存器权重的时候，有两个启发式的方法：
+* 影响的 MUX 越多，权重越大
+* 影响的电路功能相似或者相同，则权重降低；或者说影响电路功能越多，权重越大
+
+并不是所有的 CSR 都是控制寄存器，诸如 mtvec、mepc、mscratch、mtval 等数据 buffer 并不能起到控制作用，因此被选作覆盖率指标的 CSR 寄存器仅下表的 20 个 CSR：
+
+![作为覆盖率指标的 CSR 寄存器](img/processorfuzz-csr-table.png)
+
+架构层的 CSR 只会因为 csr 指令和部分指令的副作用才会改变，根据 RISCV 指令集手册的定义，每条指令最多改变一个 CSR 的值，因此用所有寄存器的值的组合作为覆盖率指标，和用当前变化的寄存器的值的组合作为覆盖率指标效果是一样的。更进一步的，ProcessorFuzz 用当前指令引起的 CSR 值变化的三元组 (csr_name, before_value, after_value) 作为最终的覆盖率指标，csr_name 是寄存器的名字，before_value 是变化前的值，after_value 是变化后的值。该覆盖率指标反映了处理器状态的变化路径，在效果的改进上类似于 AFL 边覆盖率之于块覆盖率。
+
+![csr 状态变化](img/processorfuzz-csr-pass.png)
+
+### 逐条结果检测
+
+DifuzzRTL 只在测试结束后进行一次结果检查，可能错过中间的错误结果，而 ProcessorFuzz 选择逐条检查就可以解决这个问题。但每次都检查所有的寄存器的值，会引入不小的开销。考虑到每条指令最多改变一个通用寄存器和若干个特权寄存器，因此只需要检查指令引入的寄存器差异即可，这就大大降低了需要检查的数据量。
+
+ProcessorFuzz 在生成测试程序之后，让 ISA simulation 仿真执行，得到执行的 trace，然后检查相邻 trace 之间寄存器的变化情况，然后将这些寄存器变化记录下来作为每条指令执行结果的检查点。之后让 RTL simulation 执行测试程序，输出对应的 trace，然后进行 trace difference 的比较就可以了。
+
+![代码执行流](img/processorfuzz-trace.png)
+
+### 程序过滤
+
+ProcessorFuzz 使用 CSR 的变化作为覆盖率，而 CSR 的变化在 ISA simulation 阶段就可以计算得到，因此在 RTL Simulation 之前，ProcessorFuzz 就可以知道覆盖率的增长情况。如果 ISA simulation 发现覆盖率没有提高，就可以略过 RTL simulation 阶段直接进行下一轮突变，节约了模糊测试的时间。
+
+![ProcessorFuzz 流程图](img/processorfuzz-flow.png)
+
+此外，因为不需要像 RFUZZ、DifuzzRTL 那样检查内部 MUX/REG 的状态，进而统计 coverage，ProcessorFuzz 不需要进行 RTL 插桩，又进一步节约了插桩的编译时间、降低了仿真时插桩电路的模拟时间。
+
+### 和 DifuzzRTL 的比较结果
+
+因为 ProcessorFuzz 只能软件模拟执行，无法进行硬件加速，所以这里是和 DifuzzRTL 的软件仿真部分比较的。可以看到 ProcessFuzz 的执行效率是 DifuzzRTL 的 2 倍，不过 ProcessFuzz 只有 1/3 的程序是真正执行的，其他 2/3 都是被过滤的。并用 1.23x 于 DifuzzRTL 的时间触发真实的处理器 bug。
+![效率比较](img/processor-effective.png)
+
+从覆盖率上看 ProcessorFuzz 反而略低于 DifuzzRTL。但是考虑到 ProcessorFuzz 只记录了 CSR 的状态变化，而 DifuzzRTL 则记录了所有控制寄存器状态变化，从这个角度看反而说明 ProcessorFuzz 效率、质量更高。
+![覆盖率比较](img/processor-coverage.png)
+
+不过还是要说明，这里的提高都比较有限，很难说产生了飞跃性的突破。
+
