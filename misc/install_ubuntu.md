@@ -2,11 +2,12 @@
 
 ## 杂七杂八
 
-* git
-* vim
-* htop
-* gcc
-* g++
+vim htop gcc autoconf cmake
+git help2man perl python3 make 
+autoconf g++ flex bison ccache
+libgoogle-perftools-dev numactl 
+perl-doc gcc-riscv64-unknown-elf
+gcc-riscv64-linux-gnu gtkwave
 
 ## 安装办公软件
 
