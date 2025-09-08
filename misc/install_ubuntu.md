@@ -8,6 +8,7 @@ autoconf g++ flex bison ccache
 libgoogle-perftools-dev numactl 
 perl-doc gcc-riscv64-unknown-elf
 gcc-riscv64-linux-gnu gtkwave
+net-tools
 
 ## 安装办公软件
 
