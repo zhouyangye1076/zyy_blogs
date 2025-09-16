@@ -2,6 +2,8 @@
 
 ## 启动盘制作和安装
 
+### 磁盘制作
+
 执行`apt install usb-creator-gtk`安装 USB 启动盘制作软件。
 
 进入[Ubuntu 官网](https://ubuntu.com/download/desktop)，点击`Download`下载对应的镜像文件，得到对应的 iso 镜像文件，Ubuntu 24.04.3 LTS 大小在 5.9 G 左右
@@ -11,6 +13,8 @@
 插入制作启动盘的 U 盘，然后点击`Startup Disk Creator`制作 U 盘镜像，一般会自动选中 Ubuntu.iso 和对应的 U 盘分区。制作完毕后 U 盘就被格式化了，所以记得提前备份 U 盘。用 dd 命令也是可以的，但是一旦操作失误可能会破坏正常的磁盘。
 
 ![选择 Startup Disk Creator](img/make-disk.png)
+
+### 系统安装
 
 然后我们将 U 盘插入主机，然后启动主机。理论上主机可能直接选择磁盘内部的原来的操作系统分区进行启动，这样就没有 U 盘启动的机会了，因此在启动的时候狂按 F12（进入 EFI 的按钮，不同厂商的主机不一样），主机就会进入 EFI 界面，这个时候会罗列所有启动分区，包括原主机系统（Ubuntu，windows 等）和 U 盘分区，我们选择 U 盘。如果没有识别到，可以考虑换个 USB 插口，然后重启。
 
@@ -56,15 +60,45 @@ U 盘分区是一个完整的 Ubuntu 系统，只不过它是保存在 U 盘而�
 ![设置帐号密码](img/ubuntu-install-8.jpg)
 ![选择时区](img/ubuntu-install-10.jpg)
 
+### apt 配置
+
+因为之前的安装过程中 apt 自动配置失败了，所以我们需要手动换源。
+* 进入 Ubuntu 24.04 的`/etc/apt/sources.list.d`
+* 复制原来的`ubuntu.sources`进行备份，失败了还可以复原
+```
+sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.bak
+```
+* 编写新的 sources 文件，这里使用清华源
+```
+sudo vim /etc/apt/sources.list.d/custom.sources
+```
+* 编写如下内容
+```
+Types: deb
+URIs: https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
+Suites: noble noble-updates noble-backports
+Components: main universe restricted multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+Types: deb
+URIs: https://mirrors.tuna.tsinghua.edu.cn/ubuntu/
+Suites: noble-security
+Components: main universe restricted multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+```
+* 最后执行`apt update; apt upgrade -y`更新即可
+
 ## 杂七杂八
 
-vim htop gcc autoconf cmake
-git help2man perl python3 make 
-autoconf g++ flex bison ccache
-libgoogle-perftools-dev numactl 
-perl-doc gcc-riscv64-unknown-elf
-gcc-riscv64-linux-gnu gtkwave
+```
+vim htop gcc autoconf cmake ssh \
+git help2man perl python3 make \
+autoconf g++ flex bison ccache \
+libgoogle-perftools-dev numactl \
+perl-doc gcc-riscv64-unknown-elf \
+gcc-riscv64-linux-gnu gtkwave \
 net-tools
+```
 
 ## 安装办公软件
 
@@ -181,6 +215,8 @@ sudo apt -y install wechat
     * Chisel Syntax
     * Firrtl
     * Scala Syntax
+* markdown:
+    * markdown
 
 ## 配置远程连接
 
