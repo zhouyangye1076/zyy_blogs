@@ -1,5 +1,61 @@
 # 配置 ubuntu 24.04 环境
 
+## 启动盘制作和安装
+
+执行`apt install usb-creator-gtk`安装 USB 启动盘制作软件。
+
+进入[Ubuntu 官网](https://ubuntu.com/download/desktop)，点击`Download`下载对应的镜像文件，得到对应的 iso 镜像文件，Ubuntu 24.04.3 LTS 大小在 5.9 G 左右
+
+![Ubuntu 官网下载](img/ubuntu-download.png)
+
+插入制作启动盘的 U 盘，然后点击`Startup Disk Creator`制作 U 盘镜像，一般会自动选中 Ubuntu.iso 和对应的 U 盘分区。制作完毕后 U 盘就被格式化了，所以记得提前备份 U 盘。用 dd 命令也是可以的，但是一旦操作失误可能会破坏正常的磁盘。
+
+![选择 Startup Disk Creator](img/make-disk.png)
+
+然后我们将 U 盘插入主机，然后启动主机。理论上主机可能直接选择磁盘内部的原来的操作系统分区进行启动，这样就没有 U 盘启动的机会了，因此在启动的时候狂按 F12（进入 EFI 的按钮，不同厂商的主机不一样），主机就会进入 EFI 界面，这个时候会罗列所有启动分区，包括原主机系统（Ubuntu，windows 等）和 U 盘分区，我们选择 U 盘。如果没有识别到，可以考虑换个 USB 插口，然后重启。
+
+如果主机内部存在多个系统，会进入启动系统选择界面，这个时候如果没有罗列出 U 盘分区，可以进入 firmware setup，此时如果启动分区识别到了 U 盘分区，可以将 U 盘分区优先级提高，然后 apply 和 exit。就可以看到启动分区变为了 U 盘的功能列表，选择`try to install`即可。
+
+U 盘分区是一个完整的 Ubuntu 系统，只不过它是保存在 U 盘而不是主机磁盘上的，并且内置一个 install 程序。当系统从 U 盘上启动之后，install 程序会自动启动，然后让使用者选择安装配置。
+
+出于中文习惯可以选择`中文[简体]`，但是这会导致系统的很多参数变为中文，而且文件夹会出现中文文件夹，其实对于不利于程序员快速`cd`路径，对于习惯英文配置的人也不是很方便。所以选择 English 还是不错的选择。
+
+![选择语言](img/ubuntu-install-0.jpg)
+
+选择中文或者英文都可以，中国人没有特殊的键位要求。
+
+![选择键位](img/ubuntu-install-1.jpg)
+
+如果主机有网络环境的话才可以连接网络，安装的时候会自动配置 apt，然后下载一些额外的软件包。但是我在配置的时候 apt configuration 一直因为网络问题失败（但是已经用了国内可访问的清华源？），最终决定拔掉网线，强制跳过 apt configuration 过程，开始后续安装。
+
+![连接网络](img/ubuntu-install-2.jpg)
+
+选择开始安装和交互式安装。
+
+![开始安装](img/ubuntu-install-3.jpg)
+![选择交互式安装](img/ubuntu-install-9.jpg)
+
+如果只是想要擦出原来的操作系统，然后写入新的 Ubuntu 系统，选择简单的 Erase Disk and Install Ubuntu 就可以了。但是如果希望做更精细的分区可以考虑 Manual Installation。
+
+![自动磁盘分区](img/ubuntu-install-4.jpg)
+![手动磁盘分区](img/ubuntu-install-5.jpg)
+
+如果是手动分区的话，会进入手动分区界面。这里的 sda 就是主机的磁盘，当然主机有多个物理磁盘的话，这里会有多个 sdx；sdb 是 Ubuntu 安装盘的磁盘，所以只修改 sda 就可以了。点击`New Partition Table`新建分区表，就可以将磁盘格式化，然后选择加号，就可以加入新的磁盘分区，对于 1 T 的磁盘这里推荐如下：
+* 8-16 G 作为交换区，选择 swap 格式
+* 100 G 作为系统部分，选择 ext4 格式，挂载`/`文件目录
+* 自动生成 1.33 G 作为 `/boot/efi`
+* 取下的 800 多 G 作为用户部分，选择 ext4 格式，挂载`/home`文件目录
+
+再使用的时候一些大型程序，比如 vivado 之类的还是要安装在`/home`，系统目录是安装不下的。这样的话如果真的出现了磁盘损坏，主要 800 G 的用户部分没事请，还是可以格式化其他磁盘，然后重新安装系统，挂载回来的。
+
+![磁盘分区前](img/ubuntu-install-6.jpg)
+![磁盘分区后](img/ubuntu-install-7.jpg)
+
+之后设置帐号密码和时区。在连网的情况下，时区是可以自动设置的，但是因为我们没有连网，需要手动设置。
+
+![设置帐号密码](img/ubuntu-install-8.jpg)
+![选择时区](img/ubuntu-install-10.jpg)
+
 ## 杂七杂八
 
 vim htop gcc autoconf cmake
@@ -311,5 +367,4 @@ sudo ln -s /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so
 ![VPN 配置](img/router-VPN.png)
 
 之后`lns.zju.edu.cn`就可以充当设备在内网的网关，设备的流量发给`lns.zju.edu.cn`，然后根据帐号密码进行鉴权，权限通过就可以允许访问内网。
-
 
