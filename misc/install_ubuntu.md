@@ -92,7 +92,7 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 
 ```
 vim htop gcc autoconf cmake ssh \
-git help2man perl python3 make \
+git help2man perl python3 python3-pip make \
 autoconf g++ flex bison ccache \
 libgoogle-perftools-dev numactl \
 perl-doc gcc-riscv64-unknown-elf \
@@ -215,8 +215,9 @@ sudo apt -y install wechat
     * Chisel Syntax
     * Firrtl
     * Scala Syntax
-* markdown:
+* other:
     * markdown
+    * vscode-pdf
 
 ## 配置远程连接
 
